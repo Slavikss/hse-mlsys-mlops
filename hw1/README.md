@@ -4,9 +4,9 @@
 
 ## Структура репозитория
 
-- `source/train/preprocess_data.py` — шаблон препроцессинга, превращающий сырой CSV в набор фичей, совместимый с CatBoost. Логика подходит для офлайн- и онлайн-обработки.
-- `source/train/train.py` — обучение модели CatBoost с хронологическим hold-out (последние 10% датасета) и сеткой гиперпараметров; итоговые метрики, best-итерация и оптимальный порог по F1 сохраняются вместе с моделью.
-- `inference.py` — скрипт инференса, объединяющий этапы загрузки, препроцессинга и скоринга. Формирует `sample_submission.csv`, top-5 feature importances (`feature_importances.json`) и график распределения предсказаний (`prediction_density.png`).
+- `source/train/preprocess_data.py` — шаблон препроцессинга, превращающий сырой CSV в набор фичей, совместимый с CatBoost. Логика подходит для офлайн- и онлайн-обработки; скрипт можно запускать отдельно через CLI.
+- `source/train/train.py` — обучение модели CatBoost с поддержкой случайного (`--split-strategy random`) и хронологического (`--split-strategy time`) hold-out. Скрипт подбирает порог по F1, сохраняет метрики, лучшую итерацию и параметры.
+- `inference.py` — скрипт инференса, объединяющий этапы загрузки, препроцессинга и скоринга. Формирует `sample_submission.csv`, top-5 feature importances (`feature_importances.json`) и график распределения предсказаний (`prediction_density.png`); нужные файлы и порог можно переопределять флагами.
 - `requirements.txt`, `Dockerfile`, `.dockerignore` — окружение и упаковка в Docker.
 - `artifacts/` — каталог для обученной модели (`catboost_model.cbm`) и метаданных (`feature_metadata.json`). После запуска `train.py` заполняется автоматически.
 
@@ -18,6 +18,16 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Предобработка данных
+
+```bash
+python source/train/preprocess_data.py \
+  --input-path source/data/train.csv \
+  --output-path artifacts/train_features.parquet
+```
+
+Скрипт повторяет всю логику фичеинжиниринга, использующуюся при обучении и инференсе. Параметр `--output-path` опционален: без него файл не сохраняется, но в консоль выводится форма и список колонок.
+
 ### Обучение модели
 
 ```bash
@@ -26,9 +36,11 @@ python source/train/train.py \
   --model-path artifacts/catboost_model.cbm \
   --metrics-path artifacts/metrics.json \
   --metadata-path artifacts/feature_metadata.json \
-  --validation-size 0.1 \
-  --split-strategy time
+  --validation-size 0.25 \
+  --split-strategy random
 ```
+
+По умолчанию используется стратифицированный случайный сплит 20% (`--split-strategy random`, `--validation-size 0.2`). Для воспроизведения хронологического hold-out укажите `--split-strategy time` и подходящую долю валидации, как в примере выше.
 
 Скрипт сохранит:
 - модель CatBoost (`artifacts/catboost_model.cbm`);
@@ -50,7 +62,7 @@ python inference.py \
 - `feature_importances.json` — top-5 наиболее важных признаков;
 - `prediction_density.png` — график плотности распределения предсказанных вероятностей.
 
-> Порог для перевода вероятностей в метки берётся из метаданных (`decision_threshold`). При необходимости можно переопределить его через `--threshold`.
+> Порог для перевода вероятностей в метки и порядок колонок берутся из `artifacts/feature_metadata.json`. При необходимости можно переопределить его через `--threshold`, а также изменить имена входного и выходного файлов соответствующими аргументами CLI.
 
 ## Docker
 
