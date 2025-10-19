@@ -53,5 +53,5 @@
   ],
   "target_column": "target",
   "model_path": "artifacts/catboost_model.cbm",
-  "decision_threshold": 0.95
+  "decision_threshold": 0.42
 }

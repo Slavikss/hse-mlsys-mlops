@@ -4,30 +4,29 @@ import os
 import sys
 from pathlib import Path
 from typing import Iterable, List, Optional
+
+_DEFAULT_MPL_DIR = Path.cwd() / ".matplotlib_cache"
+os.environ.setdefault("MPLCONFIGDIR", str(_DEFAULT_MPL_DIR))
+_DEFAULT_MPL_DIR.mkdir(parents=True, exist_ok=True)
+
 import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from catboost import CatBoostClassifier
 
+CURRENT_DIR = Path(__file__).resolve().parent
+SOURCE_DIR = CURRENT_DIR / "source"
+if str(SOURCE_DIR) not in sys.path:
+    sys.path.append(str(SOURCE_DIR))
+
 from train.preprocess_data import (  # noqa: E402
     CATEGORICAL_FEATURES,
     FEATURE_COLUMNS,
     build_features,
 )
-
-matplotlib.use("Agg")
-
-_DEFAULT_MPL_DIR = Path.cwd() / ".matplotlib_cache"
-os.environ.setdefault("MPLCONFIGDIR", str(_DEFAULT_MPL_DIR))
-_DEFAULT_MPL_DIR.mkdir(parents=True, exist_ok=True)
-
-
-CURRENT_DIR = Path(__file__).resolve().parent
-SOURCE_DIR = CURRENT_DIR / "source"
-if str(SOURCE_DIR) not in sys.path:
-    sys.path.append(str(SOURCE_DIR))
 
 
 def parse_args(cli_args: Optional[Iterable[str]] = None) -> argparse.Namespace:
