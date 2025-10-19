@@ -1,0 +1,15 @@
+{
+  "validation": {
+    "roc_auc": 0.9998087378116536,
+    "f1": 0.7084988085782367,
+    "f1_best_threshold": 0.9446327683615819,
+    "best_threshold": 0.95,
+    "catboost_best_auc": 0.9998087378116537
+  },
+  "best_iteration": 199,
+  "best_params": {
+    "depth": 8,
+    "learning_rate": 0.05,
+    "l2_leaf_reg": 4.0
+  }
+}
