@@ -12,4 +12,3 @@ venv/
 .matplotlib_cache/
 output/
 catboost_info/
-input/
