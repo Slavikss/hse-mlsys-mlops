@@ -1,0 +1,111 @@
+services:
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: bYKVzimvT8eN9QpL0dVhVA
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: fraud
+      POSTGRES_USER: fraud
+      POSTGRES_PASSWORD: fraud
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fraud"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  transaction-producer:
+    image: fraud-mlops-app
+    build:
+      context: .
+    command: ["-m", "streaming.transaction_producer"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_INPUT_TOPIC: transactions
+      PRODUCER_SLEEP_SECONDS: "0.5"
+      PRODUCER_REPEAT: "true"
+      TRANSACTIONS_FILE: /app/input/test.csv
+    volumes:
+      - ./input:/app/input:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  fraud-scorer:
+    image: fraud-mlops-app
+    command: ["-m", "streaming.inference_service"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_INPUT_TOPIC: transactions
+      KAFKA_OUTPUT_TOPIC: scores
+      KAFKA_CONSUMER_GROUP: fraud-scorer
+      MODEL_PATH: /app/artifacts/catboost_model.cbm
+      METADATA_PATH: /app/artifacts/feature_metadata.json
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  score-writer:
+    image: fraud-mlops-app
+    command: ["-m", "streaming.score_writer"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_OUTPUT_TOPIC: scores
+      KAFKA_CONSUMER_GROUP: fraud-score-writer
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: fraud
+      POSTGRES_USER: fraud
+      POSTGRES_PASSWORD: fraud
+      POSTGRES_TABLE: transaction_scores
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  streamlit-ui:
+    image: fraud-mlops-app
+    command: ["-m", "streamlit", "run", "streaming/ui_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: fraud
+      POSTGRES_USER: fraud
+      POSTGRES_PASSWORD: fraud
+      POSTGRES_TABLE: transaction_scores
+    ports:
+      - "8501:8501"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
