@@ -1,0 +1,31 @@
+@startuml C4_Context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Контекстная диаграмма системы детекции фрода (C4 Level 1)
+
+Person(analyst, "Аналитик безопасности", "Мониторит фродовые транзакции через веб-интерфейс")
+Person(data_scientist, "Data Scientist", "Обучает и обновляет модель детекции фрода")
+
+System(fraud_system, "Система детекции фрода", "Потоковая обработка транзакций для выявления мошенничества в реальном времени")
+
+System_Ext(payment_system, "Платёжная система", "Генерирует поток транзакций для анализа")
+System_Ext(monitoring, "Система мониторинга", "Собирает метрики и логи")
+System_Ext(alert_system, "Система оповещений", "Отправляет уведомления о критических событиях")
+
+Rel(payment_system, fraud_system, "Отправляет транзакции", "Kafka/JSON")
+Rel(fraud_system, analyst, "Отображает результаты анализа", "HTTPS/WebSocket")
+Rel(analyst, fraud_system, "Просматривает дашборд", "HTTPS")
+Rel(data_scientist, fraud_system, "Обновляет ML-модель", "Docker/Volume")
+Rel(fraud_system, monitoring, "Отправляет метрики и логи", "Syslog/Prometheus")
+Rel(fraud_system, alert_system, "Отправляет алерты о фроде", "Webhook/Email")
+
+note right of fraud_system
+  Обрабатывает 1000+ транзакций/сек
+  Латентность < 100ms
+  Доступность 99.9%
+end note
+
+@enduml
+
