@@ -1,0 +1,101 @@
+@startuml C4_Component
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_TOP_DOWN()
+
+title Диаграмма компонентов системы детекции фрода (C4 Level 3)
+
+Container_Boundary(fraud_system, "Система детекции фрода") {
+    
+    Container_Boundary(transaction_producer, "Transaction Producer Service") {
+        Component(csv_reader, "CSV Reader", "Python", "Читает транзакции из файла")
+        Component(kafka_producer, "Kafka Producer", "Python/kafka-python", "Отправляет сообщения в Kafka")
+    }
+    
+    Container_Boundary(fraud_scorer, "Fraud Scoring Service") {
+        Component(kafka_consumer, "Kafka Consumer", "Python/kafka-python", "Читает транзакции из топика")
+        Component(preprocessor, "Feature Preprocessor", "Python/pandas", "Препроцессинг и feature engineering")
+        Component(ml_model, "ML Inference Engine", "CatBoost", "Модель классификации фрода")
+        Component(scorer, "Score Publisher", "Python/kafka-python", "Публикует результаты скоринга")
+    }
+    
+    Container_Boundary(score_writer, "Score Writer Service") {
+        Component(score_consumer, "Score Consumer", "Python/kafka-python", "Читает результаты скоринга")
+        Component(db_writer, "Database Writer", "Python/psycopg2", "Записывает в PostgreSQL")
+    }
+    
+    Container_Boundary(ui, "Web UI") {
+        Component(streamlit_app, "Streamlit Dashboard", "Python/Streamlit", "Веб-интерфейс мониторинга")
+        Component(db_reader, "Database Reader", "Python/psycopg2", "Читает данные из БД")
+    }
+
+    Container_Boundary(clickhouse_ingest, "ClickHouse Analytics") {
+        Component(kafka_engine, "Kafka Engine Table", "ClickHouse", "Читает топик teta_transactions в формате CSV")
+        Component(mv_loader, "Materialized View", "ClickHouse", "Парсит строки, приводит типы, вставляет во внутреннюю таблицу")
+        Component(merge_tree, "MergeTree Storage", "ClickHouse", "Долговременное хранение для аналитики (DDL в clickhouse/02_tables_optimized.sql)")
+    }
+}
+
+ContainerDb(kafka, "Apache Kafka", "Message Broker", "Потоковая передача данных")
+ContainerDb(postgres, "PostgreSQL", "Database", "Хранилище результатов скоринга")
+ContainerDb(clickhouse, "ClickHouse", "OLAP DB", "Хранилище транзакций для ad-hoc запросов")
+
+System_Ext(user, "Аналитик")
+System_Ext(data_analyst, "Data Analyst")
+System_Ext(input_file, "CSV файл транзакций")
+
+' Transaction Producer flows
+Rel(input_file, csv_reader, "Читает", "CSV")
+Rel(csv_reader, kafka_producer, "Передаёт данные")
+Rel(kafka_producer, kafka, "Публикует транзакции", "JSON/transactions topic")
+
+' Fraud Scorer internal flows
+Rel(kafka, kafka_consumer, "Потребляет транзакции", "JSON/transactions topic")
+Rel(kafka_consumer, preprocessor, "Передаёт сырые данные")
+Rel(preprocessor, ml_model, "Подготовленные признаки")
+Rel(ml_model, scorer, "Вероятность фрода")
+Rel(scorer, kafka, "Публикует результаты", "JSON/scores topic")
+
+' Score Writer flows
+Rel(kafka, score_consumer, "Потребляет результаты", "JSON/scores topic")
+Rel(score_consumer, db_writer, "Передаёт данные")
+Rel(db_writer, postgres, "Записывает результаты", "SQL/INSERT")
+
+' UI flows
+Rel(user, streamlit_app, "Просматривает дашборд", "HTTPS")
+Rel(streamlit_app, db_reader, "Запрашивает данные")
+Rel(db_reader, postgres, "Читает результаты", "SQL/SELECT")
+
+Rel(kafka, kafka_engine, "Поток teta_transactions", "CSV")
+Rel(kafka_engine, mv_loader, "Прокидывает записи")
+Rel(mv_loader, merge_tree, "INSERT")
+Rel(data_analyst, clickhouse, "Ad-hoc SQL (cli/HTTP)", "max amount per state, агрегации")
+Rel(clickhouse, merge_tree, "Чтение/запись", "SQL")
+
+note right of fraud_scorer
+  **Детальная структура Fraud Scoring Service:**
+  1. Kafka Consumer - получает транзакции
+  2. Feature Preprocessor - создаёт признаки
+  3. ML Inference Engine - применяет модель
+  4. Score Publisher - отправляет результаты
+  
+  Обработка: < 50ms на транзакцию
+end note
+
+note left of kafka
+  Топики:
+  - transactions (входные данные)
+  - scores (результаты скоринга)
+  - teta_transactions (сырой поток в ClickHouse)
+  
+  Retention: 7 дней
+  Partitions: 3
+end note
+
+note right of clickhouse
+  Kafka Engine + MV → MergeTree
+  Запрос максимальной транзакции по штатам:
+  clickhouse/03_query_top_category.sql
+end note
+
+@enduml

@@ -1,0 +1,14 @@
+source/data
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ipynb_checkpoints/
+.matplotlib_cache/
+output/
+catboost_info/
